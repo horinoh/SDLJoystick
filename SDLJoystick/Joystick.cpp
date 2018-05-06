@@ -21,12 +21,17 @@ Joystick::Joystick(SDL_Joystick* js)
 Joystick::~Joystick()
 {
 	if (nullptr != haptic) {
+		if (-1 == SDL_HapticStopAll(haptic)) {
+		}
+
 		for (auto i : effectIDs) {
 			SDL_HapticDestroyEffect(haptic, i);
 		}
 		effectIDs.clear();
+
 		SDL_HapticClose(haptic);
 	}
+
 	if (nullptr != joystick) {
 		SDL_JoystickClose(joystick);
 	}
@@ -188,6 +193,14 @@ void Joystick::CreateEffect()
 
 		/**
 		@ 方向
+		          PC
+		          N(0, -1)
+				     |
+		W(-1, 0)-----+----- E(1, 0)
+		             |
+		          S(0, 1)
+		          ユーザ
+
 		SDL_HAPTIC_POLAR
 			N = 0, E = 90 * 100, S = 180 * 100, W = 270 * 100
 		SDL_HAPTIC_CARTESIAN
@@ -206,21 +219,31 @@ void Joystick::CreateEffect()
 
 		const auto q = SDL_HapticQuery(haptic);
 
+#define EFFECT_CREATE_REPORT(type) std::cout << "CreateEffect [ " << effectIDs.size() - 1 << " ] " << type << std::endl;
+#define CREATE_EFFECT(type) const auto effectID = SDL_HapticNewEffect(haptic, &he); if(-1 != effectID) { effectIDs.push_back(effectID); EFFECT_CREATE_REPORT(#type); }
 		//!< ---- [ BEGIN ] SDL_HapticEffect,constant ----
 		if (q & SDL_HAPTIC_CONSTANT) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_CONSTANT;
-			he.constant.type = SDL_HAPTIC_CONSTANT;
+			he.constant.type = he.type;
+			
 			he.constant.direction = dirCatesianS;
+			
 			he.constant.length = 5000; //!< 長さ5秒
-			he.constant.attack_length = 1000; //!< フェードイン1秒
-			he.constant.fade_length = 1000; //!< フェードアウト1秒
+			he.constant.delay = 0;
 
+			he.constant.button = 0;
+			he.constant.interval = 0;
+
+			//!< SDL_HAPTIC_CONSTANT
 			he.constant.level = 20000; //!< 強さ 20000 / 32767
 
-			const auto effectID = SDL_HapticNewEffect(haptic, &he);
-			assert(-1 != effectID && "SDL_HapticNewEffect() failed");
-			effectIDs.push_back(effectID);
+			he.constant.attack_length = 1000; //!< フェードイン1秒
+			he.constant.attack_level = 0;
+			he.constant.fade_length = 1000; //!< フェードアウト1秒
+			he.constant.fade_level = 0;
+
+			CREATE_EFFECT(SDL_HAPTIC_CONSTANT);
 		}
 		//!< ---- [ END ] SDL_HapticEffect,constant ----
 
@@ -228,39 +251,53 @@ void Joystick::CreateEffect()
 		if (q & SDL_HAPTIC_SINE) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_SINE;
-			he.periodic.type = SDL_HAPTIC_SINE;
+			he.periodic.type = he.type;
+
 			he.periodic.direction = dirCatesianS;
+
 			he.periodic.length = 5000; //!< 長さ5秒
-			he.periodic.attack_length = 1000; //!< フェードイン1秒
-			he.periodic.fade_length = 1000; //!< フェードアウト1秒
+			he.periodic.delay = 0;
 
+			he.periodic.button = 0;
+			he.periodic.interval = 0;
+
+			//!< SDL_HAPTIC_SINE
 			he.periodic.period = 1000; //!< ウェーブ間隔1秒
-			he.periodic.magnitude = 20000; //!< 強さ 20000 / 32767
-			he.periodic.offset;
-			he.periodic.phase;
+			he.periodic.magnitude = 20000; //!< 半径 20000 / 32767
+			he.periodic.offset = 0; //!< Yオフセット
+			he.periodic.phase = 0; //!< Xオフセット(角度オフセット)
 
-			const auto effectID = SDL_HapticNewEffect(haptic, &he);
-			assert(-1 != effectID && "SDL_HapticNewEffect() failed");
-			effectIDs.push_back(effectID);
+			he.periodic.attack_length = 1000; //!< フェードイン1秒
+			he.periodic.attack_level = 0;
+			he.periodic.fade_length = 1000; //!< フェードアウト1秒
+			he.periodic.fade_level = 0;
+
+			CREATE_EFFECT(SDL_HAPTIC_SINE);
 		}
 		//if (q & SDL_HAPTIC_SQUARE) {
 		//}
 		if (q & SDL_HAPTIC_TRIANGLE) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_TRIANGLE;
-			he.periodic.type = SDL_HAPTIC_TRIANGLE;
+			he.periodic.type = he.type;
+
+			//CREATE_EFFECT(SDL_HAPTIC_TRIANGLE);
 		}
 		if (q & SDL_HAPTIC_SAWTOOTHUP) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_SAWTOOTHUP;
-			he.periodic.type = SDL_HAPTIC_SAWTOOTHUP;
+			he.periodic.type = he.type;
 			//...
+
+			//CREATE_EFFECT(SDL_HAPTIC_SAWTOOTHUP);
 		}
-		if (q & SDL_HAPTIC_SAWTOOTHUP) {
+		if (q & SDL_HAPTIC_SAWTOOTHDOWN) {
 			memset(&he, 0, sizeof(he));
-			he.type = SDL_HAPTIC_SAWTOOTHUP;
-			he.periodic.type = SDL_HAPTIC_SAWTOOTHUP;
+			he.type = SDL_HAPTIC_SAWTOOTHDOWN;
+			he.periodic.type = he.type;
 			//...
+
+			//CREATE_EFFECT(SDL_HAPTIC_SAWTOOTHDOWN);
 		}
 		//!< ---- [ END ] SDL_HapticEffect.periodic ----
 
@@ -269,15 +306,14 @@ void Joystick::CreateEffect()
 			//!< Xboxコントローラのような左右にモーターのあるタイプ
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_LEFTRIGHT;
-			he.leftright.type = SDL_HAPTIC_LEFTRIGHT;
+			he.leftright.type = he.type;
+
 			he.leftright.length = 5000; //!< 長さ5秒
 
 			he.leftright.large_magnitude = 20000; //!< 強さ 20000 / 32767
 			he.leftright.small_magnitude = 20000; //!< 強さ 20000 / 32767
 
-			const auto effectID = SDL_HapticNewEffect(haptic, &he);
-			assert(-1 != effectID && "SDL_HapticNewEffect() failed");
-			effectIDs.push_back(effectID);
+			CREATE_EFFECT(SDL_HAPTIC_LEFTRIGHT);
 		}
 		//!< ---- [ END ] SDL_HapticEffect.leftright ----
 
@@ -285,18 +321,26 @@ void Joystick::CreateEffect()
 		if (q & SDL_HAPTIC_RAMP) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_RAMP;
-			he.ramp.type = SDL_HAPTIC_RAMP;
-			he.ramp.direction = dirCatesianS;
-			he.ramp.length = 5000; //!< 長さ5秒
-			he.ramp.attack_length = 1000; //!< フェードイン1秒
-			he.ramp.fade_length = 1000; //!< フェードアウト1秒
+			he.ramp.type = he.type;
 
-			he.ramp.start = 20000; //!< 開始時の強さ 20000 / 32767
+			he.ramp.direction = dirCatesianS;
+
+			he.ramp.length = 5000; //!< 長さ5秒
+			he.ramp.delay = 0;
+
+			he.ramp.button = 0;
+			he.ramp.interval = 0;
+
+			//!< SDL_HAPTIC_RAMP ... start から end へ線形に遷移、さらにフェードが指定されていたら加算される
+			he.ramp.start = 0; //!< 開始時の強さ 0 / 32767
 			he.ramp.end = 20000; //!< 終了時の強さ 20000 / 32767
 
-			const auto effectID = SDL_HapticNewEffect(haptic, &he);
-			assert(-1 != effectID && "SDL_HapticNewEffect() failed");
-			effectIDs.push_back(effectID);
+			he.ramp.attack_length = 0; //!< フェードイン1秒
+			he.ramp.attack_level = 0;
+			he.ramp.fade_length = 0; //!< フェードアウト1秒
+			he.ramp.fade_level = 0;
+
+			CREATE_EFFECT(SDL_HAPTIC_RAMP);
 		}
 		//!< ---- [ END ] SDL_HapticEffect.ramp ----
 
@@ -304,38 +348,100 @@ void Joystick::CreateEffect()
 		if (q & SDL_HAPTIC_SPRING) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_SPRING;
-			he.condition.type = SDL_HAPTIC_SPRING;
-			he.condition.direction = dirCatesianS;
-			he.condition.length = 5000; //!< 長さ5秒
+			he.condition.type = he.type;
 
-			he.condition.right_sat[3];    /**< Level when joystick is to the positive side; max 0xFFFF. */
-			he.condition.left_sat[3];     /**< Level when joystick is to the negative side; max 0xFFFF. */
-			he.condition.right_coeff[3];  /**< How fast to increase the force towards the positive side. */
-			he.condition.left_coeff[3];   /**< How fast to increase the force towards the negative side. */
-			he.condition.deadband[3];     /**< Size of the dead zone; max 0xFFFF: whole axis-range when 0-centered. */
-			he.condition.center[3];       /**< Position of the dead zone. */
+			he.condition.direction = dirCatesianN; //!< 使用されないが、POLAR 以外を指定しないとエフェクト作成でコケるので指定
 
-			const auto effectID = SDL_HapticNewEffect(haptic, &he);
-			assert(-1 != effectID && "SDL_HapticNewEffect() failed");
-			effectIDs.push_back(effectID);
+			he.condition.length = 0xffffffff;
+			he.condition.delay = 0;
+
+			he.condition.button = 0;
+			he.condition.interval = 0;
+
+			//!< SDL_HAPTIC_SPRING ... 軸の「位置」に基づく
+			//1< 正方向の限界値
+			he.condition.right_sat[0] = 0xffff; he.condition.right_sat[1] = 0xffff; he.condition.right_sat[2] = 0xffff;
+			//1< 負方向の限界値
+			he.condition.left_sat[0] = 0xffff; he.condition.left_sat[1] = 0xffff; he.condition.left_sat[2] = 0xffff;
+			//1< 正方向の力の増加速度
+			he.condition.right_coeff[0] = 2000; he.condition.right_coeff[1] = 2000; he.condition.right_coeff[2] = 2000;
+			//1< 負方向の力の増加速度
+			he.condition.left_coeff[0] = 2000; he.condition.left_coeff[1] = 2000; he.condition.left_coeff[2] = 2000;
+			//!< デッドゾーン
+			he.condition.deadband[0] = 0; he.condition.deadband[1] = 0; he.condition.deadband[2] = 0;
+			//!< センター
+			he.condition.center[0] = 0; he.condition.center[1] = 0; he.condition.center[2] = 0;
+
+			CREATE_EFFECT(SDL_HAPTIC_SPRING);
 		}
 		if (q & SDL_HAPTIC_DAMPER) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_DAMPER;
-			he.condition.type = SDL_HAPTIC_DAMPER;
-			//...
+			he.condition.type = he.type;
+			
+			he.condition.direction = dirCatesianN;
+
+			he.condition.length = 0xffffffff;
+			he.condition.delay = 0;
+
+			he.condition.button = 0;
+			he.condition.interval = 0;
+
+			//!< SDL_HAPTIC_DAMPER ... 軸の「速度」に基づく
+			he.condition.right_sat[0] = 0xffff; he.condition.right_sat[1] = 0xffff; he.condition.right_sat[2] = 0xffff;
+			he.condition.left_sat[0] = 0xffff; he.condition.left_sat[1] = 0xffff; he.condition.left_sat[2] = 0xffff;
+			he.condition.right_coeff[0] = 2000; he.condition.right_coeff[1] = 2000; he.condition.right_coeff[2] = 2000;
+			he.condition.left_coeff[0] = 2000; he.condition.left_coeff[1] = 2000; he.condition.left_coeff[2] = 2000;
+			he.condition.deadband[0] = 0; he.condition.deadband[1] = 0; he.condition.deadband[2] = 0;
+			he.condition.center[0] = 0; he.condition.center[1] = 0; he.condition.center[2] = 0;
+
+			CREATE_EFFECT(SDL_HAPTIC_DAMPER);
 		}
 		if (q & SDL_HAPTIC_INERTIA) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_INERTIA;
-			he.condition.type = SDL_HAPTIC_INERTIA;
-			//...
+			he.condition.type = he.type;
+			
+			he.condition.direction = dirCatesianN;
+
+			he.condition.length = 0xffffffff;
+			he.condition.delay = 0;
+
+			he.condition.button = 0;
+			he.condition.interval = 0;
+
+			//!< SDL_HAPTIC_INERTIA ... 軸の「加速度」に基づく
+			he.condition.right_sat[0] = 0xffff; he.condition.right_sat[1] = 0xffff; he.condition.right_sat[2] = 0xffff;
+			he.condition.left_sat[0] = 0xffff; he.condition.left_sat[1] = 0xffff; he.condition.left_sat[2] = 0xffff;
+			he.condition.right_coeff[0] = 2000; he.condition.right_coeff[1] = 2000; he.condition.right_coeff[2] = 2000;
+			he.condition.left_coeff[0] = 2000; he.condition.left_coeff[1] = 2000; he.condition.left_coeff[2] = 2000;
+			he.condition.deadband[0] = 0; he.condition.deadband[1] = 0; he.condition.deadband[2] = 0;
+			he.condition.center[0] = 0; he.condition.center[1] = 0; he.condition.center[2] = 0;
+
+			CREATE_EFFECT(SDL_HAPTIC_INERTIA);
 		}
 		if (q & SDL_HAPTIC_FRICTION) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_FRICTION;
-			he.condition.type = SDL_HAPTIC_FRICTION;
-			//...
+			he.condition.type = he.type;
+
+			he.condition.direction = dirCatesianN;
+
+			he.condition.length = 0xffffffff;
+			he.condition.delay = 0;
+
+			he.condition.button = 0;
+			he.condition.interval = 0;
+
+			//!< SDL_HAPTIC_FRICTION ... 軸の「移動」に基づく
+			he.condition.right_sat[0] = 0xffff; he.condition.right_sat[1] = 0xffff; he.condition.right_sat[2] = 0xffff;
+			he.condition.left_sat[0] = 0xffff; he.condition.left_sat[1] = 0xffff; he.condition.left_sat[2] = 0xffff;
+			he.condition.right_coeff[0] = 2000; he.condition.right_coeff[1] = 2000; he.condition.right_coeff[2] = 2000;
+			he.condition.left_coeff[0] = 2000; he.condition.left_coeff[1] = 2000; he.condition.left_coeff[2] = 2000;
+			he.condition.deadband[0] = 0; he.condition.deadband[1] = 0; he.condition.deadband[2] = 0;
+			he.condition.center[0] = 0; he.condition.center[1] = 0; he.condition.center[2] = 0;
+
+			CREATE_EFFECT(SDL_HAPTIC_FRICTION);
 		}
 		//!< ---- [ END ] SDL_HapticEffect.condition ----
 
@@ -343,52 +449,62 @@ void Joystick::CreateEffect()
 		if (q & SDL_HAPTIC_CUSTOM) {
 			memset(&he, 0, sizeof(he));
 			he.type = SDL_HAPTIC_CUSTOM;
-			he.custom.type = SDL_HAPTIC_CUSTOM;
+			he.custom.type = he.type;
+
 			he.custom.direction = dirCatesianS;
+			
 			he.custom.length = 5000; //!< 長さ5秒
-			he.custom.attack_length = 1000; //!< フェードイン1秒
-			he.custom.fade_length = 1000; //!< フェードアウト1秒
+			he.custom.delay = 0;
 
-			he.custom.channels;         /**< Axes to use, minimum of one. */
-			he.custom.period;          /**< Sample periods. */
-			he.custom.samples;         /**< Amount of samples. */
-			he.custom.data;           /**< Should contain channels*samples items. */
+			he.custom.button = 0;
+			he.custom.interval = 0;
 
-			const auto effectID = SDL_HapticNewEffect(haptic, &he);
-			assert(-1 != effectID && "SDL_HapticNewEffect() failed");
-			effectIDs.push_back(effectID);
+			//!< SDL_HAPTIC_CUSTOM ... 形状をカスタマイズできる periodic エフェクトのように振る舞う
+			he.custom.channels = 1; //!< 軸数 (最低 1)
+			he.custom.period = 1000; //!< ウェーブ間隔1秒
+			he.custom.samples = 10; //!< サンプル数
+			std::vector<Uint16> data = {
+				0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+			};
+			he.custom.data = data.data();
+
+			he.custom.attack_length = 0; //!< フェードイン1秒
+			he.custom.attack_level = 0;
+			he.custom.fade_length = 0; //!< フェードアウト1秒
+			he.custom.fade_level = 0;
+
+			CREATE_EFFECT(SDL_HAPTIC_CUSTOM);
 		}
 		//!< ---- [ END ] SDL_HapticEffect.custom ----
 
-		//!< その他操作
-		//if (q & SDL_HAPTIC_GAIN) {
-		//	if (-1 == SDL_HapticSetGain(haptic, 0-100)) { assert(true); }
-		//}
-		//if (q & SDL_HAPTIC_AUTOCENTER) {
-		//	if (-1 == SDL_HapticSetAutocenter(haptic, 0-100)) { assert(true);}
-		//}
-		//if (q & SDL_HAPTIC_STATUS) {
-		//	//!< 0 : プレイ中でない, 1 : プレイ中
-		//	if (-1 == SDL_HapticGetEffectStatus(haptic, effectID)) { assert(true); }
-		//}
-		//if (q & SDL_HAPTIC_PAUSE) {
-		//	if (-1 == SDL_HapticPause(haptic)) { assert(true); }
-		//	if (-1 == SDL_HapticUnpause(haptic)) { assert(true); }
-		//}
-		//SDL_HapticStopEffect(haptic, effectIDs.back());
-		//SDL_HapticStopAll(haptic);
-
-		// TEST
-		const int effectToPlay = effectIDs.back();
-		
+#undef CREATE_EFFECT
+#undef EFFECT_CREATED
 	}
+
+	//if (q & SDL_HAPTIC_GAIN) {
+	//	if (-1 == SDL_HapticSetGain(haptic, 0-100)) { assert(true); }
+	//}
+	//if (q & SDL_HAPTIC_AUTOCENTER) {
+	//	if (-1 == SDL_HapticSetAutocenter(haptic, 0-100)) { assert(true);}
+	//}
+	//if (q & SDL_HAPTIC_PAUSE) {
+	//	if (-1 == SDL_HapticPause(haptic)) { assert(true); }
+	//	if (-1 == SDL_HapticUnpause(haptic)) { assert(true); }
+	//}
 }
 
 void Joystick::PlayEffect(const int effectID)
 {
 	if (nullptr != haptic && effectIDs.size() > effectID) {
-		if (-1 != SDL_HapticRunEffect(haptic, effectID, 1)) {
-			SDL_Delay(5000);
+		if (1 == SDL_HapticGetEffectStatus(haptic, effectID)) {
+			if (-1 != SDL_HapticStopEffect(haptic, effectID)) {
+				std::cout << "StopEffect" << std::endl;
+			}
+		}
+		else {
+			if (-1 != SDL_HapticRunEffect(haptic, effectID, 1)) {
+				std::cout << "RunEffect" << std::endl;
+			}
 		}
 	}
 }
